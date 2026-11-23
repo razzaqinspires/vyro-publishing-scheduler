@@ -1,59 +1,24 @@
 # VYRO Publishing Scheduler
 
-**Repository:** `vyro-publishing-scheduler`  
-**Purpose:** persistent content queue, due-job leasing, retry policy, publication audit trail, metrics ingestion, and data-backed posting-slot recommendations.
+**Release:** 1.2.0 · **Python:** 3.11+ · **Storage:** SQLite WAL.
 
-## Boundary
+This is an internal queue and analytics component. It is not connected to the public VYRO Media Library website. Live publication remains the responsibility of `vyro-instagram-publisher` and requires its own operator approval.
 
-This repository owns queue state and timing decisions. It does not call Instagram, generate AI content, or render videos. A future orchestrator claims a due job, calls the relevant component, then records the outcome here. This separation prevents the scheduler from binding itself to one publisher implementation.
+## Safety and queue states
+- New jobs start at `PENDING_APPROVAL` and cannot be claimed.
+- An operator must run `vyro-scheduler approve <job_id>` to move a job to `SCHEDULED`.
+- The worker claims approved due jobs with a lease and bounded attempt count.
+- Expired leases are recovered; completed jobs become `PUBLISHED`; exhausted jobs become `FAILED`.
+- `idempotency_key` is unique. Reusing the same key with a different payload is rejected.
 
-## State machine
-
-`DRAFT → SCHEDULED → PROCESSING → PUBLISHED`  
-`PROCESSING → RETRY_WAIT → PROCESSING` (bounded attempts)  
-`PROCESSING → FAILED` (terminal)
-
-Claims use SQLite transactions with a lease. A crashed worker's expired lease can be safely returned to the queue. `idempotency_key` prevents duplicate scheduling requests.
-
-## Performance scoring
-
-The slot recommender compares the actual account's historical posts by local publishing hour. It uses reach-normalized signals (shares, saves, comments, profile visits, follows, and inquiries) and Bayesian-style shrinkage toward the account-wide baseline when a time slot has few observations. It does not claim that the score is Meta's recommendation algorithm or guarantee viral reach. Recommendation output includes sample size and confidence tier.
-
-## Install
-
+## Usage
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -e '.[dev]'
-```
-
-## CLI
-
-```bash
 vyro-scheduler init
-vyro-scheduler add --content-id vyro-001 --video-url https://cdn.example.com/vyro.mp4 --caption "Approved caption" --at "2026-11-24T19:30:00+07:00"
-vyro-scheduler due --limit 10
-vyro-scheduler complete JOB_ID --media-id INSTAGRAM_MEDIA_ID
-vyro-scheduler fail JOB_ID --reason "Temporary API outage" --retry-in 300
-vyro-scheduler metrics JOB_ID --views 1200 --reach 900 --shares 22 --saves 31 --comments 7 --profile-visits 18 --follows 5 --inquiries 2
-vyro-scheduler recommend-slots
+vyro-scheduler add --content-id vyro-demo-01 --video-url https://cdn.example/video.mp4 --caption "Caption" --at "2026-11-24T19:30:00+07:00" --idempotency-key "vyro-demo-01-reel-01"
+vyro-scheduler approve <job_id>
+vyro-scheduler due --limit 5
+vyro-scheduler status
 ```
 
-Default timezone is `Asia/Jakarta`. Set `TIMEZONE` and `VYRO_SCHEDULER_DB` to control timezone and persistent database path. Store timestamps with offsets; never assume server-local timezone. The CLI creates the database only when a command is executed, not during module import.
-
-## Initial experimentation protocol
-
-Test 07:30, 12:15, and 19:30 WIB as hypotheses—not platform-published algorithm timings. Rotate formats fairly. Collect enough posts per slot before changing the plan. Compare medians and business outcomes (qualified inquiries/orders), not only views.
-
-## Operations
-
-- Back up the SQLite database before upgrades.
-- Keep the queue DB on reliable persistent storage; avoid shared network filesystems for concurrent writers.
-- Use a single writer/worker initially; scale only after moving to a database with server-side concurrency controls.
-- Set a sensible per-day publishing cap in the orchestrator.
-- The scheduler never mass-posts, auto-engages, buys interactions, or sends unsolicited DMs.
-
-## 1.1.0 — Prime operations
-
-- Enforces HTTPS media URLs without embedded credentials/fragments, timezone-offset timestamps, bounded retry counts, and caption/idempotency constraints.
-This repository remains an internal queue service and is not connected to the public website demo. The future orchestrator must call the scheduler only after explicit human approval and must keep publishing credentials outside the scheduler database. Use a single worker until a server-grade transactional database is adopted.
+Record post metrics with `vyro-scheduler metrics`; inspect account-specific exploratory time-slot rankings with `vyro-scheduler recommend-slots`. Sample-size and retention caveats apply. These scores are not Instagram ranking signals and cannot guarantee reach or virality.

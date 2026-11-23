@@ -1,5 +1,7 @@
 # Changelog
 
-## 1.1.0 — 2026-11-23
-- Clarified internal-only scheduler boundary and human-approved handoff.
-- Preserved queue leasing, idempotency, bounded retry, and metrics scoring.
+## 1.2.0 — Approval-gated queue
+- Added mandatory operator approval before a job can be claimed by the scheduler.
+- Added approval revocation, status summary, stronger idempotency conflict detection, and metrics validation.
+- Existing unapproved scheduled jobs are migrated to `PENDING_APPROVAL` for safety.
+- Kept the scheduler independent from the public VYRO website.

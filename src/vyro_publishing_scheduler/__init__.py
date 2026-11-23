@@ -1,3 +1,3 @@
-"""VYRO MEDIA vyro-publishing-scheduler component."""
+"""VYRO MEDIA publishing queue and analytics scheduler."""
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"

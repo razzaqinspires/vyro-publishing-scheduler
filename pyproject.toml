@@ -3,8 +3,8 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "vyro-publishing-scheduler"
-version = "1.1.0"
-description = "Persistent, idempotent content queue and performance-driven slot scoring for VYRO MEDIA."
+version = "1.2.0"
+description = "Persistent, idempotent, approval-gated media queue and account-specific performance scoring for VYRO MEDIA."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Proprietary" }
