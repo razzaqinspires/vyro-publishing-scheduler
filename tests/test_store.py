@@ -1,3 +1,4 @@
+import pytest
 from vyro_publishing_scheduler.store import QueueStore
 
 def test_idempotency_and_claim(tmp_path):
@@ -24,3 +25,11 @@ def test_fail_requeues_with_delay(tmp_path):
  row=store.list_due()[0]
  assert row["status"]=="SCHEDULED"
  assert row["last_error"]=="temporary"
+
+
+def test_rejects_naive_schedule_and_untrusted_url(tmp_path):
+ store=QueueStore(tmp_path/"strict.db")
+ with pytest.raises(ValueError):
+  store.add_job("vyro-3","http://cdn.example/v.mp4","caption","2026-11-24T10:00:00","key-3")
+ with pytest.raises(ValueError):
+  store.add_job("vyro-3","https://user:pass@cdn.example/v.mp4","caption","2026-11-24T10:00:00+07:00","key-4")

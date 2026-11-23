@@ -52,3 +52,8 @@ Test 07:30, 12:15, and 19:30 WIB as hypotheses—not platform-published algorith
 - Use a single writer/worker initially; scale only after moving to a database with server-side concurrency controls.
 - Set a sensible per-day publishing cap in the orchestrator.
 - The scheduler never mass-posts, auto-engages, buys interactions, or sends unsolicited DMs.
+
+## 1.1.0 — Prime operations
+
+- Enforces HTTPS media URLs without embedded credentials/fragments, timezone-offset timestamps, bounded retry counts, and caption/idempotency constraints.
+This repository remains an internal queue service and is not connected to the public website demo. The future orchestrator must call the scheduler only after explicit human approval and must keep publishing credentials outside the scheduler database. Use a single worker until a server-grade transactional database is adopted.

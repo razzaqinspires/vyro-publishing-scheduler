@@ -3,6 +3,8 @@ import sqlite3, json, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from urllib.parse import urlsplit
+import re
 
 SCHEMA="""
 PRAGMA journal_mode=WAL;
@@ -32,9 +34,19 @@ class QueueStore:
  def init(self):
   with self.connect() as con: con.executescript(SCHEMA)
  def add_job(self, content_id, video_url, caption, scheduled_at, idempotency_key, max_attempts=3):
-  if not video_url.startswith("https://"): raise ValueError("video_url must be public HTTPS")
+  parsed=urlsplit(video_url)
+  if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
+   raise ValueError("video_url must be a valid public HTTPS URL without credentials or fragment")
+  if len(content_id) < 4 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{2,79}", content_id):
+   raise ValueError("content_id format is invalid")
+  if not idempotency_key or len(idempotency_key) > 160:
+   raise ValueError("idempotency_key must contain 1-160 characters")
+  if not isinstance(caption, str) or len(caption) > 2200:
+   raise ValueError("caption must be a string of at most 2200 characters")
+  if not 1 <= int(max_attempts) <= 10:
+   raise ValueError("max_attempts must be between 1 and 10")
   dt=datetime.fromisoformat(scheduled_at)
-  if dt.tzinfo is None: raise ValueError("scheduled_at must include a UTC offset")
+  if dt.tzinfo is None or dt.utcoffset() is None: raise ValueError("scheduled_at must include a UTC offset")
   now=datetime.now(timezone.utc).isoformat(); job_id=str(uuid.uuid4())
   with self.connect() as con:
    con.execute("BEGIN IMMEDIATE")
@@ -45,6 +57,7 @@ class QueueStore:
    con.commit()
   return job_id
  def claim_due(self, limit=5, lease_seconds=300):
+  limit=max(1,min(int(limit),50)); lease_seconds=max(30,min(int(lease_seconds),3600))
   now=datetime.now(timezone.utc); now_s=now.isoformat(); lease=(now+timedelta(seconds=lease_seconds)).isoformat()
   claimed=[]
   with self.connect() as con:
@@ -59,6 +72,7 @@ class QueueStore:
    con.commit()
   return claimed
  def complete(self, job_id, media_id):
+  if not media_id or len(media_id) > 160: raise ValueError("media_id must contain 1-160 characters")
   now=datetime.now(timezone.utc).isoformat()
   with self.connect() as con:
    cur=con.execute("UPDATE jobs SET status='PUBLISHED',instagram_media_id=?,lease_until=NULL,last_error=NULL,updated_at=? WHERE id=? AND status='PROCESSING'",(media_id,now,job_id))
@@ -78,7 +92,9 @@ class QueueStore:
    rows=con.execute("SELECT * FROM jobs ORDER BY scheduled_at LIMIT ?",(max(1,min(limit,100)),)).fetchall()
    return [dict(r) for r in rows]
  def add_metrics(self, job_id, scheduled_at, **metrics):
-  dt=datetime.fromisoformat(scheduled_at).astimezone(self.tz); allowed={k:float(metrics.get(k,0)) for k in ("views","reach","shares","saves","comments","profile_visits","follows","inquiries")}
+  dt=datetime.fromisoformat(scheduled_at)
+  if dt.tzinfo is None or dt.utcoffset() is None: raise ValueError("scheduled_at must include a UTC offset")
+  dt=dt.astimezone(self.tz); allowed={k:float(metrics.get(k,0)) for k in ("views","reach","shares","saves","comments","profile_visits","follows","inquiries")}
   if any(v<0 for v in allowed.values()): raise ValueError("Metrics cannot be negative")
   with self.connect() as con:
    exists=con.execute("SELECT 1 FROM jobs WHERE id=?",(job_id,)).fetchone()
